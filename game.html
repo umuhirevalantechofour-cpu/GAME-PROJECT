@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sniper Battlefield — Valante</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #0e1726aa;
+            --accent: #e2b04c;
+            --danger: #d9534f;
+            --text: #e6eef8;
+        }
+
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            font-family: Inter, -system-ui, Segoe UI, Roboto, "Helvetica Neue", Arial;
+        }
+
+        body {
+            background: linear-gradient(180deg, #071025 0%, #0b1530 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+        }
+
+        /* Light theme overrides */
+        body[data-theme="light"] {
+            --panel: rgba(250, 252, 255, 0.86);
+            --text: #102027;
+            background: linear-gradient(180deg, #e7edf8 0%, #cfdaf0 100%);
+        }
+
+        .wrap {
+            width: 100%;
+            max-width: 1000px;
+            margin: 24px;
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 18px;
+        }
+
+        canvas {
+            background: linear-gradient(180deg, #0b1b2b 0%, rgba(10, 24, 39, 0.8) 100%);
+            border-radius: 8px;
+            display: block;
+            box-shadow: 0 8px 30px rgba(2, 8, 20, .6);
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+            aspect-ratio: 800 / 520;
+        }
+
+        .panel {
+            background: var(--panel);
+            padding: 12px;
+            border-radius: 8px;
+            color: var(--text);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+        }
+
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 18px
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 6px 0;
+        }
+
+        .stat {
+            font-size: 14px
+        }
+
+        .bar {
+            height: 14px;
+            background: #081018;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 6px
+        }
+
+        .bar>span {
+            display: block;
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #f7d58b);
+            width: 50%
+        }
+
+        .danger {
+            background: linear-gradient(90deg, var(--danger), #ff9a9a)
+        }
+
+        .btn {
+            background: #132033;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            padding: 8px 10px;
+            border-radius: 6px;
+            color: var(--text);
+            cursor: pointer;
+            margin-top: 8px
+        }
+
+        .footer {
+            font-size: 12px;
+            margin-top: 12px;
+            color: rgba(230, 238, 248, .7)
+        }
+
+        .controls {
+            font-size: 13px;
+            line-height: 1.5
+        }
+
+        .muted {
+            color: rgba(230, 238, 248, .65)
+        }
+
+        @media(max-width:880px) {
+            .wrap {
+                grid-template-columns: 1fr;
+            }
+
+            .panel {
+                order: 2
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <div>
+            <canvas id="game" width="800" height="520"></canvas>
+        </div>
+        <div class="panel">
+            <h1>Sniper Battlefield — Valante</h1>
+            <div class="row">
+                <div class="stat">Score</div>
+                <div id="score" class="stat">0</div>
+            </div>
+            <div class="row">
+                <div class="stat">bullets</div>
+                <div id="ammo" class="stat">10 / 10</div>
+            </div>
+            <div class="bar"><span id="ammoBar" style="width:100%"></span></div>
+
+            <div class="row">
+                <div class="stat">Health</div>
+                <div id="health" class="stat">100</div>
+            </div>
+            <div class="bar"><span id="healthBar" style="width:100%"></span></div>
+
+            <div class="row">
+                <div class="stat">Level</div>
+                <div id="level" class="stat">1</div>
+            </div>
+            <div style="margin-top:10px" class="controls">
+                <div><strong>Controls</strong></div>
+                <div class="muted">Move crosshair with mouse • Click to shoot • Press <strong>R</strong> to reload</div>
+                <div style="margin-top:8px">
+                    <button class="btn" id="restartBtn">Restart</button>
+                    <button class="btn" id="toggleSound">Sound: ON</button>
+                    <button class="btn" id="toggleTheme">Theme: Dark</button>
+                </div>
+            </div>
+            <div class="footer">
+                <div>Enemies: regular soldiers & snipers (long-range). Aim for head (top of rectangle) for extra score!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /*
+        Simple Sniper-style canvas game
+        - Crosshair follows mouse
+        - Click to shoot (limited ammo)
+        - Enemies spawn and move; snipers shoot from distance
+        - Score, level progression, health, reload mechanics
+        No external assets used — purely drawn shapes.
+        */
+        (() => {
+            const canvas = document.getElementById('game');
+            const ctx = canvas.getContext('2d');
+            let W = canvas.width, H = canvas.height;
+            const scoreEl = document.getElementById('score');
+            const ammoEl = document.getElementById('ammo');
+            const ammoBar = document.getElementById('ammoBar');
+            const healthEl = document.getElementById('health');
+            const healthBar = document.getElementById('healthBar');
+            const levelEl = document.getElementById('level');
+            const restartBtn = document.getElementById('restartBtn');
+            const toggleSoundBtn = document.getElementById('toggleSound');
+            const toggleThemeBtn = document.getElementById('toggleTheme');
+
+            let mouse = { x: W / 2, y: H / 2, down: false };
+            let soundOn = true;
+            let theme = (document.body.dataset.theme === 'light') ? 'light' : 'dark';
+
+            function applyTheme(t) {
+                theme = t;
+                if (t === 'light') document.body.setAttribute('data-theme', 'light');
+                else document.body.removeAttribute('data-theme');
+                if (toggleThemeBtn) toggleThemeBtn.textContent = 'Theme: ' + (theme === 'light' ? 'Light' : 'Dark');
+            }
+
+            function palette() {
+                if (theme === 'light') {
+                    return {
+                        skyTop: '#cfe4ff',
+                        skyBottom: '#b7c8e6',
+                        ground: '#c8e0d4',
+                        grid: 'rgba(0,0,0,0.06)',
+                        uiPanel: 'rgba(0,0,0,0.06)',
+                        uiText: '#102027',
+                        crossOuter: 'rgba(0,0,0,0.12)',
+                        crossInner: 'rgba(10,10,10,0.8)',
+                        crossDot: '#111',
+                        sniperBox: '#0003',
+                        head: '#555',
+                        goOverlay: 'rgba(255,255,255,0.5)',
+                        goText: '#111'
+                    };
+                }
+                return {
+                    skyTop: '#052033',
+                    skyBottom: '#0b1624',
+                    ground: '#0b2a20',
+                    grid: 'rgba(255,255,255,0.03)',
+                    uiPanel: 'rgba(255,255,255,0.06)',
+                    uiText: '#e6eef8',
+                    crossOuter: 'rgba(255,255,255,0.08)',
+                    crossInner: 'rgba(230,230,230,0.9)',
+                    crossDot: '#fff',
+                    sniperBox: '#fff3',
+                    head: '#222',
+                    goOverlay: 'rgba(2,6,12,0.6)',
+                    goText: '#fff'
+                };
+            }
+
+            // Game state
+            let score = 0;
+            let ammoMax = 10;
+            let ammo = ammoMax;
+            let reloading = false;
+            let reloadTime = 1600; // ms
+            let health = 100;
+            let level = 1;
+            let enemies = [];
+            let bullets = [];
+            let lastSpawn = 0;
+            let spawnInterval = 1600;
+            let lastTime = performance.now();
+            let gameOver = false;
+
+            // Utility
+            function rand(min, max) { return Math.random() * (max - min) + min; }
+            function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+            // Enemy types
+            const types = {
+                grunt: { color: '#6bb26b', size: 28, speed: 0.6, hp: 1, score: 10 },
+                heavy: { color: '#b26b6b', size: 36, speed: 0.35, hp: 2, score: 20 },
+                sniper: { color: '#6b8fb2', size: 22, speed: 0.2, hp: 1, score: 30, sniper: true, aimTime: 1200, lastShot: 0, shotInterval: 2200 }
+            };
+
+            function spawnEnemy() {
+                let t;
+                const randVal = Math.random();
+                if (randVal < 0.12 + level * 0.01) t = 'sniper';
+                else if (randVal < 0.35) t = 'heavy';
+                else t = 'grunt';
+                const type = types[t];
+                // choose spawn edge: top,left,right,bottom
+                const edge = Math.floor(rand(0, 4));
+                let x, y;
+                if (edge === 0) { x = rand(40, W - 40); y = -40; }
+                else if (edge === 1) { x = -40; y = rand(40, H - 120); }
+                else if (edge === 2) { x = W + 40; y = rand(40, H - 120); }
+                else { x = rand(40, W - 40); y = H + 40; }
+                enemies.push({
+                    id: Math.random().toString(36).slice(2),
+                    type: t,
+                    x, y,
+                    vx: 0, vy: 0,
+                    size: type.size,
+                    hp: type.hp,
+                    color: type.color,
+                    created: performance.now(),
+                    aimStart: 0
+                });
+            }
+
+            // Shooting
+            function shoot(x, y) {
+                if (gameOver) return;
+                if (reloading) return;
+                if (ammo <= 0) {
+                    // auto reload
+                    startReload();
+                    return;
+                }
+                ammo--;
+                playBeep();
+                bullets.push({ x, y, life: 600, created: performance.now() });
+                // check hits immediately (instant hit-scan)
+                // prefer head region (upper part)
+                let hitIndex = -1;
+                let bestDist = 9999;
+                for (let i = 0; i < enemies.length; i++) {
+                    const e = enemies[i];
+                    // simple hit: if crosshair within enemy box
+                    const ex = e.x, ey = e.y, sz = e.size;
+                    // enemy rectangle center is e.x,e.y
+                    const dx = Math.abs(x - ex);
+                    const dy = Math.abs(y - ey);
+                    if (dx <= sz && dy <= sz) {
+                        // score more if head (top 40% of rect)
+                        let scoreMult = (y < ey - sz * 0.25) ? 2 : 1;
+                        // choose nearest to aim point
+                        const d = Math.hypot(dx, dy);
+                        if (d < bestDist) {
+                            bestDist = d;
+                            hitIndex = i;
+                            enemies[i].hitScoreMult = scoreMult;
+                        }
+                    }
+                }
+                if (hitIndex !== -1) {
+                    const e = enemies[hitIndex];
+                    e.hp--;
+                    if (e.hp <= 0) {
+                        addScore(types[e.type].score * (e.hitScoreMult || 1));
+                        // explosion effect
+                        spawnDeathEffect(e.x, e.y);
+                        enemies.splice(hitIndex, 1);
+                    } else {
+                        // small hit feedback
+                        spawnHitEffect(e.x, e.y);
+                    }
+                }
+                updateHUD();
+            }
+
+            function addScore(v) {
+                score += v;
+                scoreEl.textContent = score;
+                // level up every 200 points-ish
+                const newLevel = Math.floor(score / 200) + 1;
+                if (newLevel > level) {
+                    level = newLevel;
+                    levelEl.textContent = level;
+                    spawnInterval = Math.max(600, spawnInterval - 100);
+                }
+            }
+
+            // Reload
+            function startReload() {
+                if (reloading || ammo === ammoMax) return;
+                reloading = true;
+                updateHUD();
+                setTimeout(() => { ammo = ammoMax; reloading = false; updateHUD(); playReload(); }, reloadTime);
+            }
+
+            // Effects
+            let effects = [];
+            function spawnDeathEffect(x, y) {
+                for (let i = 0; i < 10; i++) {
+                    effects.push({ x, y, vx: rand(-2, 2), vy: rand(-3, 1), life: 800, created: performance.now() });
+                }
+            }
+            function spawnHitEffect(x, y) {
+                for (let i = 0; i < 6; i++) {
+                    effects.push({ x, y, vx: rand(-1.5, 1.5), vy: rand(-2.5, -0.5), life: 500, created: performance.now() });
+                }
+            }
+
+            // Enemy AI & shooting
+            function enemiesAct(dt, now) {
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const e = enemies[i];
+                    const spec = types[e.type];
+                    // simple move towards bottom center or wander
+                    const target = { x: W / 2, y: H - 60 };
+                    const angle = Math.atan2(target.y - e.y, target.x - e.x);
+                    e.vx += Math.cos(angle) * spec.speed * dt * 0.02;
+                    e.vy += Math.sin(angle) * spec.speed * dt * 0.02;
+                    // apply some wobble for grunt
+                    e.x += e.vx * dt * 0.06 + rand(-0.2, 0.2);
+                    e.y += e.vy * dt * 0.06 + rand(-0.2, 0.2);
+                    // limit speed
+                    e.vx *= 0.98; e.vy *= 0.98;
+
+                    // if reaches bottom -> damage player and remove
+                    if (e.y > H - 60 || e.x < -80 || e.x > W + 80) {
+                        // enemy left battlefield, no damage
+                        enemies.splice(i, 1);
+                        continue;
+                    }
+
+                    // snipers attempt to shoot player from distance
+                    if (spec.sniper) {
+                        if (!e.aimStart) e.aimStart = now;
+                        const aimElapsed = now - e.aimStart;
+                        if (aimElapsed > spec.aimTime) {
+                            // shoot at intervals
+                            if (now - (e.lastShot || 0) > spec.shotInterval - (level * 40)) {
+                                e.lastShot = now;
+                                // If player near crosshair area, do more damage
+                                const chance = 0.6 + Math.min(0.3, level * 0.02);
+                                if (Math.random() < chance) {
+                                    // sniper shot hits
+                                    damagePlayer(12 + Math.floor(level * 1.5));
+                                    spawnDeathEffect(mouse.x, mouse.y); // visual
+                                } else {
+                                    // miss: small effect somewhere
+                                }
+                                e.aimStart = now + rand(-200, 200);
+                                playShot();
+                            }
+                        }
+                    } else {
+                        // grunts occasionally cause collision if close to bottom
+                        // if they get very close to center line, they explode (damage)
+                        const d = Math.hypot(e.x - W / 2, e.y - (H - 60));
+                        if (d < 26 && Math.random() < 0.006 * dt) {
+                            damagePlayer(8 + Math.floor(level * 0.6));
+                            spawnHitEffect(e.x, e.y);
+                            enemies.splice(i, 1);
+                        }
+                    }
+                }
+            }
+
+            function damagePlayer(amount) {
+                if (gameOver) return;
+                health -= amount;
+                if (health < 0) health = 0;
+                updateHUD();
+                playHurt();
+                if (health === 0) {
+                    endGame();
+                }
+            }
+
+            // HUD
+            function updateHUD() {
+                ammoEl.textContent = (reloading ? 'Reloading...' : ammo) + ' / ' + ammoMax;
+                const ammoPct = (ammo / ammoMax) * 100;
+                ammoBar.style.width = `${ammoPct}%`;
+                if (reloading) {
+                    ammoBar.style.width = '100%';
+                    ammoBar.style.background = 'linear-gradient(90deg,#6bd3ff,#bcecff)';
+                } else {
+                    ammoBar.style.background = 'linear-gradient(90deg,var(--accent),#f7d58b)'.replace('var(--accent)', 'var(--accent)');
+                }
+                healthEl.textContent = Math.max(0, Math.round(health));
+                const healthPct = Math.max(0, health) + '%';
+                healthBar.style.width = Math.max(0, health) + '%';
+                if (health < 30) healthBar.className = 'danger';
+                else healthBar.className = '';
+                levelEl.textContent = level;
+                scoreEl.textContent = score;
+            }
+
+            // Sounds (tiny beeps using WebAudio)
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            let audioCtx = null;
+            function ensureAudio() {
+                if (!audioCtx && AudioCtx) audioCtx = new AudioCtx();
+            }
+            function playBeep() {
+                if (!soundOn) return;
+                ensureAudio();
+                if (!audioCtx) return;
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.type = 'sine';
+                o.frequency.value = 800;
+                g.gain.value = 0.02;
+                o.connect(g); g.connect(audioCtx.destination);
+                o.start(); o.stop(audioCtx.currentTime + 0.06);
+            }
+            function playReload() {
+                if (!soundOn) return;
+                ensureAudio();
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.type = 'square'; o.frequency.value = 220;
+                g.gain.value = 0.02;
+                o.connect(g); g.connect(audioCtx.destination);
+                o.start(); o.stop(audioCtx.currentTime + 0.12);
+            }
+            function playShot() {
+                if (!soundOn) return;
+                ensureAudio();
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.type = 'triangle'; o.frequency.value = 180;
+                g.gain.value = 0.03;
+                o.connect(g); g.connect(audioCtx.destination);
+                o.start(); o.stop(audioCtx.currentTime + 0.08);
+            }
+            function playHurt() {
+                if (!soundOn) return;
+                ensureAudio();
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.type = 'sawtooth'; o.frequency.value = 120;
+                g.gain.value = 0.03;
+                o.connect(g); g.connect(audioCtx.destination);
+                o.start(); o.stop(audioCtx.currentTime + 0.18);
+            }
+
+            // Input handlers
+            canvas.addEventListener('mousemove', e => {
+                const rect = canvas.getBoundingClientRect();
+                mouse.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+                mouse.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            });
+            canvas.addEventListener('mousedown', e => {
+                mouse.down = true;
+                // left click
+                shoot(mouse.x, mouse.y);
+            });
+            canvas.addEventListener('mouseup', e => { mouse.down = false; });
+
+            window.addEventListener('keydown', e => {
+                if (e.key === 'r' || e.key === 'R') startReload();
+                if (e.key === ' ') { shoot(mouse.x, mouse.y); e.preventDefault(); }
+            });
+
+            restartBtn.addEventListener('click', initGame);
+            toggleSoundBtn.addEventListener('click', () => { soundOn = !soundOn; toggleSoundBtn.textContent = 'Sound: ' + (soundOn ? 'ON' : 'OFF'); });
+            toggleThemeBtn.addEventListener('click', () => { applyTheme(theme === 'dark' ? 'light' : 'dark'); });
+
+            // Main loop
+            function loop(now) {
+                const dt = Math.min(60, now - lastTime);
+                lastTime = now;
+                // spawn logic
+                if (!gameOver && now - lastSpawn > spawnInterval - Math.min(600, level * 30)) {
+                    spawnEnemy();
+                    lastSpawn = now;
+                }
+                // update
+                enemiesAct(dt, now);
+                // update bullets / effects life
+                bullets = bullets.filter(b => now - b.created < b.life);
+                effects = effects.filter(e => now - e.created < e.life);
+                // draw
+                draw(now);
+                if (!gameOver) requestAnimationFrame(loop);
+            }
+
+            // Drawing
+            function draw(now) {
+                ctx.clearRect(0, 0, W, H);
+                // sky gradient
+                const pal = palette();
+                const g = ctx.createLinearGradient(0, 0, 0, H);
+                g.addColorStop(0, pal.skyTop);
+                g.addColorStop(1, pal.skyBottom);
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, W, H);
+
+                // distant hills / ground
+                ctx.fillStyle = pal.ground;
+                ctx.fillRect(0, H - 90, W, 90);
+                // target area lines
+                ctx.strokeStyle = pal.grid;
+                ctx.beginPath();
+                for (let i = 0; i < 10; i++) {
+                    ctx.moveTo(i * (W / 10), H - 90);
+                    ctx.lineTo(i * (W / 10) + 10, H - 60);
+                }
+                ctx.stroke();
+
+                // draw enemies
+                for (const e of enemies) {
+                    // shadow
+                    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+                    ctx.beginPath();
+                    ctx.ellipse(e.x + 6, e.y + e.size * 0.6, e.size * 0.6, e.size * 0.25, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    // body
+                    ctx.fillStyle = e.color;
+                    // torso
+                    ctx.fillRect(e.x - e.size * 0.5, e.y - e.size * 0.25, e.size, e.size * 0.6);
+                    // head (top smaller rectangle) - headshot area
+                    ctx.fillStyle = palette().head;
+                    ctx.fillRect(e.x - e.size * 0.25, e.y - e.size * 0.7, e.size * 0.5, e.size * 0.3);
+                    // mark snipers with a scope box
+                    if (e.type === 'sniper') {
+                        ctx.strokeStyle = palette().sniperBox;
+                        ctx.strokeRect(e.x - e.size * 0.6, e.y - e.size * 0.9, e.size * 1.2, e.size * 1.4);
+                        // show aim indicator if aiming
+                        const nowT = performance.now();
+                        const aimProgress = Math.min(1, Math.max(0, (nowT - (e.aimStart || 0)) / (types.sniper.aimTime || 1200)));
+                        if (aimProgress > 0.5) {
+                            ctx.fillStyle = 'rgba(255,60,60,' + ((aimProgress - 0.5) * 1.5) + ')';
+                            ctx.beginPath();
+                            ctx.ellipse(e.x, e.y - e.size * 0.2, 6 + aimProgress * 8, 6 + aimProgress * 4, 0, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+
+                // draw bullets (simple tracer)
+                for (const b of bullets) {
+                    const t = (now - b.created) / b.life;
+                    ctx.beginPath();
+                    ctx.moveTo(W / 2, H); // imaginary gun bottom center
+                    ctx.lineTo(b.x, b.y);
+                    ctx.strokeStyle = 'rgba(255,220,120,' + (1 - t) + ')';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // draw effects
+                for (const fx of effects) {
+                    const lifePct = 1 - ((now - fx.created) / fx.life);
+                    ctx.fillStyle = 'rgba(255,200,120,' + lifePct + ')';
+                    ctx.beginPath();
+                    ctx.arc(fx.x, fx.y, 2 + 3 * lifePct, 0, Math.PI * 2);
+                    ctx.fill();
+                    fx.x += fx.vx; fx.y += fx.vy; fx.vy += 0.06;
+                }
+
+                // Crosshair
+                drawCrosshair(mouse.x, mouse.y);
+
+                // UI overlay (score small)
+                ctx.fillStyle = pal.uiPanel;
+                ctx.fillRect(8, 8, 120, 40);
+                ctx.fillStyle = pal.uiText;
+                ctx.font = '13px system-ui, Segoe UI, Arial';
+                ctx.fillText('Score: ' + score, 16, 28);
+
+                // if game over show overlay
+                if (gameOver) {
+                    ctx.fillStyle = pal.goOverlay;
+                    ctx.fillRect(0, 0, W, H);
+                    ctx.fillStyle = pal.goText;
+                    ctx.font = '32px system-ui, Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('GAME OVER', W / 2, H / 2 - 10);
+                    ctx.font = '16px system-ui, Arial';
+                    ctx.fillText('Score: ' + score + ' • Level: ' + level, W / 2, H / 2 + 20);
+                    ctx.textAlign = 'left';
+                }
+            }
+
+            function drawCrosshair(x, y) {
+                const pal = palette();
+                // outer ring
+                ctx.beginPath();
+                ctx.arc(x, y, 20, 0, Math.PI * 2);
+                ctx.strokeStyle = pal.crossOuter;
+                ctx.lineWidth = 2; ctx.stroke();
+                // inner cross
+                ctx.beginPath();
+                ctx.moveTo(x - 28, y); ctx.lineTo(x - 8, y);
+                ctx.moveTo(x + 28, y); ctx.lineTo(x + 8, y);
+                ctx.moveTo(x, y - 28); ctx.lineTo(x, y - 8);
+                ctx.moveTo(x, y + 28); ctx.lineTo(x, y + 8);
+                ctx.strokeStyle = pal.crossInner;
+                ctx.lineWidth = 2; ctx.stroke();
+                // small dot
+                ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = pal.crossDot; ctx.fill();
+            }
+
+            // Game over
+            function endGame() {
+                gameOver = true;
+                updateHUD();
+            }
+
+            // Resize canvas to be crisp on high-DPI
+            function fixDPI() {
+                const ratio = window.devicePixelRatio || 1;
+                const styleW = canvas.clientWidth || canvas.width;
+                const styleH = canvas.clientHeight || canvas.height;
+                canvas.width = Math.floor(styleW * ratio);
+                canvas.height = Math.floor(styleH * ratio);
+                W = canvas.width; H = canvas.height;
+                ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            }
+            window.addEventListener('resize', () => {
+                // recompute responsive canvas size
+                responsive();
+            });
+
+            // Init / restart
+            function initGame() {
+                // reset
+                score = 0; ammo = ammoMax; reloading = false; health = 100; level = 1;
+                enemies = []; bullets = []; effects = []; lastSpawn = 0; spawnInterval = 1600; gameOver = false;
+                lastTime = performance.now();
+                updateHUD();
+                requestAnimationFrame(loop);
+            }
+
+            // quick mobile scaling: allow canvas to be responsive
+            function responsive() {
+                const parentW = canvas.parentElement ? canvas.parentElement.clientWidth : window.innerWidth;
+                const targetW = Math.min(800, Math.max(280, parentW));
+                const targetH = Math.round(targetW * (520 / 800));
+                canvas.style.width = targetW + 'px';
+                canvas.style.height = targetH + 'px';
+                // adjust internal pixel ratio
+                const ratio = window.devicePixelRatio || 1;
+                canvas.width = Math.floor(targetW * ratio);
+                canvas.height = Math.floor(targetH * ratio);
+                ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+                W = targetW;
+                H = targetH;
+            }
+
+            // bootstrap
+            applyTheme(theme);
+            responsive();
+            updateHUD();
+            initGame();
+
+        })();
+    </script>
+</body>
+
+</html>
